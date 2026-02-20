@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+}
+
+enum LessonType {
+  TEXT
+  QUIZ
+}
+
+enum BookingStatus {
+  REQUESTED
+  APPROVED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id               String        @id @default(cuid())
+  email            String        @unique
+  passwordHash     String
+  role             Role
+  status           UserStatus    @default(PENDING)
+  refreshTokenHash String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  courses          Course[]      @relation("CourseCreator")
+  quizAttempts     QuizAttempt[]
+  instructorSlots  Availability[]
+  studentBookings  Booking[]     @relation("StudentBookings")
+  assignedBookings Booking[]     @relation("InstructorBookings")
+  approvedBookings Booking[]     @relation("ApprovedByAdmin")
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  creator     User     @relation("CourseCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  modules     Module[]
+
+  @@index([title])
+}
+
+model Module {
+  id        String   @id @default(cuid())
+  courseId  String
+  title     String
+  order     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+
+  @@index([title])
+}
+
+model Lesson {
+  id        String       @id @default(cuid())
+  moduleId  String
+  title     String
+  type      LessonType
+  content   Json?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  module    Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+}
+
+model QuizQuestion {
+  id                 String  @id @default(cuid())
+  lessonId           String
+  prompt             String
+  options            Json
+  correctAnswerIndex Int
+  lesson             Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model QuizAttempt {
+  id                 String   @id @default(cuid())
+  lessonId           String
+  studentId          String
+  answers            Json
+  score              Int
+  incorrectQuestionIds Json
+  createdAt          DateTime @default(now())
+  lesson             Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student            User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Availability {
+  id           String   @id @default(cuid())
+  instructorId String
+  startTime    DateTime
+  endTime      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  instructor   User     @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+
+  @@index([instructorId, startTime, endTime])
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  studentId    String
+  instructorId String?
+  availabilityId String?
+  approvedBy   String?
+  startTime    DateTime
+  endTime      DateTime
+  status       BookingStatus @default(REQUESTED)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  student      User          @relation("StudentBookings", fields: [studentId], references: [id], onDelete: Cascade)
+  instructor   User?         @relation("InstructorBookings", fields: [instructorId], references: [id], onDelete: SetNull)
+  availability Availability? @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
+  approver     User?         @relation("ApprovedByAdmin", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([instructorId, startTime, endTime, status])
+}
